@@ -1,0 +1,6 @@
+[workspace]
+
+members = [
+	"data_lib" ,
+	"foundation",
+]
