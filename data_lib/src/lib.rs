@@ -11,8 +11,8 @@ mod data_serialization {
         pub fn new(dataset: Vec<String>) -> Consumable {
             Consumable { data: dataset }
         }
-        pub fn get_data(&self) -> Vec<String> {
-            self.data
+        pub fn get_data(&self) -> &Vec<String> {
+            &self.data
         }
     }
 }
@@ -23,8 +23,9 @@ mod data_clients {
     use postgres::{Client, Error, NoTls, Row};
 
     pub trait DataClient {
+        type ConsumableType;
         fn get_data_by_title(&mut self) -> Option<Consumable>;
-        fn get_consumable_from_data<T>(&mut self, dataset: Vec<T>) -> Consumable;
+        fn get_consumable_from_data(&mut self, dataset: Vec<Self::ConsumableType>) -> Consumable;
         fn import_data(&mut self, data: Consumable);
     }
 
@@ -69,19 +70,20 @@ mod data_clients {
 
         fn make_table_from_consumable(&mut self, table: Consumable) {
             let query = self.make_table_query_string(table.get_data());
-            self.client.execute(query, &[]).unwrap();
+            self.client.execute(&query, &[]).unwrap();
         }
 
-        fn make_table_query_string(&mut self, rows: Vec<String>) -> &str {
+        fn make_table_query_string(&mut self, rows: &Vec<String>) -> String {
             let prefix = "CREATE TABLE (".to_owned();
             let postfix = ")".to_owned();
             let column_names_and_types = rows.join(",").strip_suffix(",").unwrap().to_owned();
             let query = prefix + &column_names_and_types + &postfix;
-            &query
+            query
         }
     }
 
     impl DataClient for PostGresSqlClient {
+        type ConsumableType = Row;
         fn get_data_by_title(&mut self) -> Option<Consumable> {
             if let Ok(dataset) = self.client.query("SELECT * FROM materials_list", &[]) {
                 Some(self.get_consumable_from_data(dataset))
@@ -89,19 +91,13 @@ mod data_clients {
                 None
             }
         }
-        fn get_consumable_from_data<T>(&mut self, dataset: Vec<T>) -> Consumable {
+        fn get_consumable_from_data(&mut self, dataset: Vec<Row>) -> Consumable {
             let consumable_data = PostGresSqlClient::rows_to_string(dataset);
             Consumable::new(consumable_data)
         }
 
         fn import_data(&mut self, data: Consumable) {
             self.make_table_from_consumable(data)
-        }
-    }
-
-    impl Drop for PostGresSqlClient {
-        fn drop(&mut self) {
-            self.client.close();
         }
     }
 }
